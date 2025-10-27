@@ -1,0 +1,76 @@
+name: frontend-deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - env: dev
+            env_upper: DEV
+            aws_role_arn: AWS_ROLE_ARN_DEV
+            front_bucket: FRONT_BUCKET_DEV
+            cf_distribution: CF_DISTRIBUTION_ID_DEV
+          # TODO: Enable stg once Secrets/Variables are provisioned.
+          # - env: stg
+          #   env_upper: STG
+          #   aws_role_arn: AWS_ROLE_ARN_STG
+          #   front_bucket: FRONT_BUCKET_STG
+          #   cf_distribution: CF_DISTRIBUTION_ID_STG
+          # TODO: Enable prd after verifying dev/stg deployment pipeline.
+          # - env: prd
+          #   env_upper: PRD
+          #   aws_role_arn: AWS_ROLE_ARN_PRD
+          #   front_bucket: FRONT_BUCKET_PRD
+          #   cf_distribution: CF_DISTRIBUTION_ID_PRD
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+      VITE_API_BASE_URL: ${{ vars[format('VITE_API_BASE_URL_{0}', matrix.env_upper)] }}
+      VITE_COGNITO_DOMAIN: ${{ vars[format('VITE_COGNITO_DOMAIN_{0}', matrix.env_upper)] }}
+      VITE_COGNITO_CLIENT_ID: ${{ vars[format('VITE_COGNITO_CLIENT_ID_{0}', matrix.env_upper)] }}
+      VITE_COGNITO_REDIRECT_URI: ${{ vars[format('VITE_COGNITO_REDIRECT_URI_{0}', matrix.env_upper)] }}
+      VITE_COGNITO_LOGOUT_REDIRECT: ${{ vars[format('VITE_COGNITO_LOGOUT_REDIRECT_{0}', matrix.env_upper)] }}
+      VITE_AWS_REGION: ${{ vars[format('VITE_AWS_REGION_{0}', matrix.env_upper)] || vars.AWS_REGION || 'ap-northeast-1' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install & Build
+        run: |
+          npm ci
+          npm run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets[matrix.aws_role_arn] }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload assets (immutable) — 1行
+        run: |
+          aws s3 cp dist/ s3://$FRONT_BUCKET/ --recursive --exclude "*.html" --cache-control "public,max-age=31536000,immutable"
+        env:
+          FRONT_BUCKET: ${{ secrets[matrix.front_bucket] }}
+
+      - name: Upload HTML (short cache) — 1行
+        run: |
+          aws s3 cp dist/ s3://$FRONT_BUCKET/ --recursive --exclude "*" --include "*.html" --cache-control "public,max-age=60,must-revalidate"
+        env:
+          FRONT_BUCKET: ${{ secrets[matrix.front_bucket] }}
+
+      - name: Invalidate minimal paths — 1行
+        run: |
+          aws cloudfront create-invalidation --distribution-id "$CF_ID" --paths "/index.html" "/"
+        env:
+          CF_ID: ${{ secrets[matrix.cf_distribution] }}

@@ -1,0 +1,18 @@
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+
+# TypeScript incremental build info
+tsconfig.tsbuildinfo
+
+# Environment files
+.env
+
+# OS / editor junk
+.DS_Store
+*.swp
+*.log
+.idea/
+.vscode/
