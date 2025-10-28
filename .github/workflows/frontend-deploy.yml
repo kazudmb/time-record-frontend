@@ -2,7 +2,15 @@ name: frontend-deploy
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - stg
+      - prd
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: '手動実行で対象環境を指定する場合に利用します (dev/stg/prd)'
+        required: false
 
 jobs:
   deploy:
@@ -12,54 +20,68 @@ jobs:
       contents: read
     strategy:
       matrix:
-        include:
-          - env: dev
-          # TODO: Enable stg once Secrets/Variables are provisioned.
-          # - env: stg
-          # TODO: Enable prd after verifying dev/stg deployment pipeline.
-          # - env: prd
-    environment: ${{ matrix.env }}
+        env:
+          - name: dev
+          - name: stg
+          - name: prd
+    environment: ${{ matrix.env.name }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
-      # VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-      # VITE_COGNITO_DOMAIN: ${{ vars.VITE_COGNITO_DOMAIN }}
-      # VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
-      # VITE_COGNITO_REDIRECT_URI: ${{ vars.VITE_COGNITO_REDIRECT_URI }}
-      # VITE_COGNITO_LOGOUT_REDIRECT: ${{ vars.VITE_COGNITO_LOGOUT_REDIRECT }}
-      # VITE_AWS_REGION: ${{ vars.VITE_AWS_REGION || vars.AWS_REGION || 'ap-northeast-1' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Detect branch env
+        id: detect_env
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          case "${REF_NAME}" in
+            main) echo "branch_env=dev" >> "$GITHUB_OUTPUT" ;;
+            stg) echo "branch_env=stg" >> "$GITHUB_OUTPUT" ;;
+            prd) echo "branch_env=prd" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "branch_env=" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
-      - uses: actions/setup-node@v4
+      - name: Filter target env
+        id: filter
+        env:
+          TARGET_ENV: ${{ github.event.inputs.target_env || '' }}
+          BRANCH_ENV: ${{ steps.detect_env.outputs.branch_env || '' }}
+          MATRIX_ENV: ${{ matrix.env.name }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_MERGED: ${{ github.event.pull_request.merged || false }}
+        run: |
+          if [ "${EVENT_NAME}" = "pull_request" ] && [ "${PR_MERGED}" != "true" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$TARGET_ENV" ]; then
+            if [ "$TARGET_ENV" = "$MATRIX_ENV" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ -n "$BRANCH_ENV" ]; then
+            if [ "$BRANCH_ENV" = "$MATRIX_ENV" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.filter.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Frontend Deploy
+        if: steps.filter.outputs.run == 'true'
+        uses: ./.github/actions/frontend-deploy
         with:
           node-version: "20"
-          cache: npm
-
-      - name: Install & Build
-        run: |
-          npm ci
-          npm run build
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Upload assets (immutable) — 1行
-        run: |
-          aws s3 cp dist/ s3://$FRONT_BUCKET/ --recursive --exclude "*.html" --cache-control "public,max-age=31536000,immutable"
-        env:
-          FRONT_BUCKET: ${{ secrets.FRONT_BUCKET }}
-
-      - name: Upload HTML (short cache) — 1行
-        run: |
-          aws s3 cp dist/ s3://$FRONT_BUCKET/ --recursive --exclude "*" --include "*.html" --cache-control "public,max-age=60,must-revalidate"
-        env:
-          FRONT_BUCKET: ${{ secrets.FRONT_BUCKET }}
-
-      - name: Invalidate minimal paths — 1行
-        run: |
-          aws cloudfront create-invalidation --distribution-id "$CF_ID" --paths "/index.html" "/"
-        env:
-          CF_ID: ${{ secrets.CF_DISTRIBUTION_ID }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          front-bucket: ${{ secrets.FRONT_BUCKET }}
+          cf-distribution-id: ${{ secrets.CF_DISTRIBUTION_ID }}
