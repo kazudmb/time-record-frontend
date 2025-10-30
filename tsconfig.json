@@ -11,12 +11,13 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    // shadcn
+    "types": ["node"],
+    // shadcn start
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    // shadcn end
   },
   "include": ["src"]
 }
-

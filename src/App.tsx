@@ -1,6 +1,14 @@
-import { useCallback, useMemo, useState, type ChangeEvent } from "react";
-import { toast } from "sonner";
+import { useCallback, useMemo, useState } from "react";
 import { AppShell } from "./components/layout/AppShell";
+import { Button } from "./components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
+import { toast } from "sonner";
 
 type Employee = {
   id: string;
@@ -30,8 +38,8 @@ export function App() {
     [selectedEmployeeId],
   );
 
-  const handleSelectChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    setSelectedEmployeeId(event.target.value);
+  const handleSelectChange = useCallback((value: string) => {
+    setSelectedEmployeeId(value);
   }, []);
 
   const handleCheckIn = useCallback(async () => {
@@ -66,23 +74,25 @@ export function App() {
       primaryAction={null}
     >
       <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm shadow-slate-900/5 backdrop-blur">
-        <div>
-          <select
-            id="employee"
-            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-            value={selectedEmployeeId}
-            onChange={handleSelectChange}
+        <div className="mt-2">
+          <Select
+            value={selectedEmployeeId || undefined}
+            onValueChange={handleSelectChange}
           >
-            <option value="">選択してください</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base shadow-sm focus:border-slate-400 focus:ring-2 focus:ring-slate-200">
+              <SelectValue placeholder="選択してください" />
+            </SelectTrigger>
+            <SelectContent>
+              {employees.map((employee) => (
+                <SelectItem key={employee.id} value={employee.id}>
+                  {employee.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <button
+        <Button
           type="button"
           disabled={!selectedEmployee || isSubmitting}
           onClick={handleCheckIn}
@@ -95,7 +105,7 @@ export function App() {
           aria-busy={isSubmitting}
         >
           {isSubmitting ? "送信中..." : "出勤"}
-        </button>
+        </Button>
       </section>
     </AppShell>
   );
