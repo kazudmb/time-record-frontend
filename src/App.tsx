@@ -63,7 +63,6 @@ export function App() {
   return (
     <AppShell
       title="出勤記録"
-      description="従業員を選択して出勤登録を行います。"
       primaryAction={null}
     >
       <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm shadow-slate-900/5 backdrop-blur">
