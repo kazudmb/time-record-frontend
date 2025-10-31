@@ -14,7 +14,7 @@ export function AppShell({
   children,
 }: AppShellProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-background text-foreground">
       <header className="sticky top-0 z-10 safe-pt border-b border-black/5 bg-white/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="min-w-0">
@@ -32,7 +32,7 @@ export function AppShell({
         </div>
       </header>
 
-      <main className="flex-1 bg-slate-50/60">
+      <main className="flex-1 overflow-hidden bg-slate-50/60">
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-8 sm:px-6">
           {children}
         </div>

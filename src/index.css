@@ -45,6 +45,11 @@
     height: 100%;
   }
 
+  html, body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   body {
     margin: 0;
     @apply bg-background text-foreground antialiased;
