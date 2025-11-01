@@ -14,6 +14,10 @@ export const OFFICE_COORDINATE = {
 
 export const ALLOWED_RADIUS_METERS = 200;
 
+// NOTE: 開発環境で位置情報が取得できない場合の一時的なモック設定
+// const USE_MOCK_LOCATION = false; // ← 本番運用はこちらを使用
+const USE_MOCK_LOCATION = true;
+
 function getDistanceInMeters(
   latitudeA: number,
   longitudeA: number,
@@ -63,6 +67,15 @@ export function useCheckInLocation() {
   }, []);
 
   const requestLocation = useCallback(async (): Promise<LocationRequestResult> => {
+    // NOTE: 開発環境で位置情報が取得できない場合の一時的なモック設定
+    if (USE_MOCK_LOCATION) {
+      setStatus("allowed");
+      setErrorMessage(null);
+      setDistanceFromOffice(0);
+      return { kind: "allowed", distance: 0 };
+    }
+    // NOTE: 開発環境で位置情報が取得できない場合の一時的なモック設定
+
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
       const message = "位置情報取得に対応していないブラウザです。";
       setStatus("error");

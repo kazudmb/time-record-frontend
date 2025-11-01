@@ -34,8 +34,7 @@ export function CheckInPage() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { distanceFromOffice, errorMessage, requestLocation, status } =
-    useCheckInLocation();
+  const { requestLocation } = useCheckInLocation();
 
   const selectedEmployee = useMemo(
     () => employees.find((employee) => employee.id === selectedEmployeeId) ?? null,
@@ -85,8 +84,7 @@ export function CheckInPage() {
     }
   }, [isSubmitting, requestLocation, selectedEmployee]);
 
-  const isCheckInDisabled =
-    !selectedEmployee || isSubmitting || status !== "allowed";
+  const isCheckInDisabled = !selectedEmployee || isSubmitting;
 
   return (
     <section className="space-y-4 rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm shadow-slate-900/5 backdrop-blur">
@@ -119,40 +117,6 @@ export function CheckInPage() {
       >
         {isSubmitting ? "送信中..." : "出勤"}
       </Button>
-
-      <div className="space-y-2 rounded-2xl border border-dashed border-slate-200 p-4 text-sm">
-        {status === "loading" && <p className="text-slate-600">位置情報を取得しています...</p>}
-        {status === "allowed" && distanceFromOffice !== null && (
-          <p className="text-emerald-600">
-            出勤可能エリア内です（目標地点から約
-            {Math.round(distanceFromOffice)}
-            m）。
-          </p>
-        )}
-        {status === "out_of_range" && distanceFromOffice !== null && (
-          <p className="text-amber-600">
-            出勤可能エリア外です（目標地点から約
-            {Math.round(distanceFromOffice)}
-            m）。現地に移動してから再取得してください。
-          </p>
-        )}
-        {status === "error" && errorMessage && <p className="text-red-600">{errorMessage}</p>}
-        {status === "allowed" && distanceFromOffice === null && !errorMessage && (
-          <p className="text-slate-600">位置情報の取得に成功しました。</p>
-        )}
-
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            void requestLocation();
-          }}
-          disabled={status === "loading"}
-          className="w-full rounded-full"
-        >
-          {status === "loading" ? "再取得中..." : "位置情報を再取得"}
-        </Button>
-      </div>
     </section>
   );
 }
