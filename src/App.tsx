@@ -62,6 +62,11 @@ function getDistanceInMeters(
   return earthRadius * c;
 }
 
+type LocationRequestResult =
+  | { kind: "allowed"; distance: number }
+  | { kind: "out_of_range"; distance: number }
+  | { kind: "error"; message: string };
+
 async function requestCheckIn(employee: Employee) {
   // TODO: 実際の API エンドポイントが整備されたら fetch で置き換える
   // const response = await fetch("/api/checkins", { method: "POST", body: JSON.stringify({ employeeId: employee.id }) });
@@ -88,63 +93,92 @@ export function App() {
     setSelectedEmployeeId(value);
   }, []);
 
-  const evaluateLocation = useCallback((position: GeolocationPosition) => {
-    const { latitude, longitude } = position.coords;
-    const distance = getDistanceInMeters(
-      latitude,
-      longitude,
-      OFFICE_COORDINATE.latitude,
-      OFFICE_COORDINATE.longitude,
-    );
-    setDistanceFromOffice(distance);
+  const handleLocationSuccess = useCallback(
+    (position: GeolocationPosition): LocationRequestResult => {
+      const { latitude, longitude } = position.coords;
+      const distance = getDistanceInMeters(
+        latitude,
+        longitude,
+        OFFICE_COORDINATE.latitude,
+        OFFICE_COORDINATE.longitude,
+      );
+      setDistanceFromOffice(distance);
 
-    if (distance <= ALLOWED_RADIUS_METERS) {
-      setLocationStatus("allowed");
-      setLocationErrorMessage(null);
-      return;
-    }
+      if (distance <= ALLOWED_RADIUS_METERS) {
+        setLocationStatus("allowed");
+        setLocationErrorMessage(null);
+        return { kind: "allowed", distance };
+      }
 
-    setLocationStatus("out_of_range");
-    setLocationErrorMessage("出勤可能エリア外にいるため、出勤登録できません。");
-  }, []);
+      setLocationStatus("out_of_range");
+      setLocationErrorMessage("出勤可能エリア外にいるため、出勤登録できません。");
+      return { kind: "out_of_range", distance };
+    },
+    [],
+  );
 
-  const requestLocation = useCallback(() => {
+  const requestLocation = useCallback(async (): Promise<LocationRequestResult> => {
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
+      const message = "位置情報取得に対応していないブラウザです。";
       setLocationStatus("error");
-      setLocationErrorMessage("位置情報取得に対応していないブラウザです。");
+      setLocationErrorMessage(message);
       setDistanceFromOffice(null);
-      return;
+      return { kind: "error", message };
     }
 
     setLocationStatus("loading");
     setDistanceFromOffice(null);
     setLocationErrorMessage(null);
 
-    navigator.geolocation.getCurrentPosition(
-      evaluateLocation,
-      (error) => {
-        setLocationStatus("error");
-        setDistanceFromOffice(null);
-        setLocationErrorMessage(
-          error.code === error.PERMISSION_DENIED
-            ? "位置情報の利用が許可されていません。ブラウザの設定をご確認ください。"
-            : "位置情報の取得に失敗しました。通信状況をご確認のうえ、再度お試しください。",
-        );
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      },
-    );
-  }, [evaluateLocation]);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        });
+      });
+
+      return handleLocationSuccess(position);
+    } catch (error) {
+      const geolocationError = error as GeolocationPositionError;
+      const permissionDeniedCode =
+        typeof geolocationError?.PERMISSION_DENIED === "number"
+          ? geolocationError.PERMISSION_DENIED
+          : 1;
+
+      const message =
+        geolocationError?.code === permissionDeniedCode
+          ? "位置情報の利用が許可されていません。ブラウザの設定をご確認ください。"
+          : "位置情報の取得に失敗しました。通信状況をご確認のうえ、再度お試しください。";
+
+      setLocationStatus("error");
+      setDistanceFromOffice(null);
+      setLocationErrorMessage(message);
+
+      return { kind: "error", message };
+    }
+  }, [handleLocationSuccess]);
 
   useEffect(() => {
-    requestLocation();
+    void requestLocation();
   }, [requestLocation]);
 
   const handleCheckIn = useCallback(async () => {
-    if (!selectedEmployee || isSubmitting || locationStatus !== "allowed") return;
+    if (!selectedEmployee || isSubmitting) return;
+
+    const locationResult = await requestLocation();
+    if (locationResult.kind === "error") {
+      toast.error(locationResult.message);
+      return;
+    }
+
+    if (locationResult.kind === "out_of_range") {
+      toast.error("出勤可能エリア外です。", {
+        description: `目標地点から約${Math.round(locationResult.distance)}m離れています。`,
+      });
+      return;
+    }
 
     const now = new Date();
     const timestamp = now.toLocaleString("ja-JP", { hour12: false });
@@ -167,7 +201,7 @@ export function App() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, locationStatus, selectedEmployee]);
+  }, [isSubmitting, requestLocation, selectedEmployee]);
 
   const isCheckInDisabled =
     !selectedEmployee || isSubmitting || locationStatus !== "allowed";
@@ -241,7 +275,9 @@ export function App() {
           <Button
             type="button"
             variant="outline"
-            onClick={requestLocation}
+            onClick={() => {
+              void requestLocation();
+            }}
             disabled={locationStatus === "loading"}
             className="w-full rounded-full"
           >
